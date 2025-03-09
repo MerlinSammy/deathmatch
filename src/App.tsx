@@ -1,6 +1,6 @@
 import NavBar from "./components/NavBar";
 import "./App.css";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { parse } from "papaparse";
 
 function App() {
@@ -30,7 +30,8 @@ function App() {
   const [isVisible, setIsVisible] = useState(true);
   const [tblRendered, setTblRendered] = useState<any>();
   const [ausgeschiedene, setAusgeschiedene] = useState<string[]>([]);
-  const [letzterAusgeschiedener, setLetzterAusgeschiedener] = useState("");
+  //let ausgeschiedene: string[];
+  //const [letzterAusgeschiedener, setLetzterAusgeschiedener] = useState("");
 
   let lastSelectedCell: HTMLElement;
   let lastSelectedCellBgColor: string;
@@ -151,7 +152,9 @@ function App() {
   };
 
   const getTable = (): Element | null => {
-    const table = document.querySelector("table tbody");
+    //const table = document.querySelector("table tbody");
+    const table = document.querySelector(".tbl tbody");
+
     if (!table) {
       console.error("Tabelle nicht gefunden!");
       return null;
@@ -166,14 +169,19 @@ function App() {
     return row;
   };
 
-  const getRow = (table: Element | null): HTMLTableRowElement | null => {
+  const getRow = (
+    table: Element | null,
+    index: number
+  ): HTMLTableRowElement | null => {
     if (!table) {
       console.error("Keine Tabelle in getRow mitgegeben");
       return null;
     } else {
-      const row = table.getElementsByTagName("tr")[rowIndex];
+      const row = table.getElementsByTagName("tr")[index];
+      console.log(table.getElementsByTagName("tr"));
+
       if (!row) {
-        console.error(`Keine Zeile für Index ${rowIndex} gefunden!`);
+        console.error(`Keine Zeile für Index ${index} gefunden!`);
         return null;
       } else {
         return row;
@@ -215,11 +223,18 @@ function App() {
 
   const [nep, setNep] = useState<any>();
 
-  //Beim Klick auf Bewertung
+  //Beim Klick auf Bewertung ------------------------------------------
   const onBewertung = (value: number) => {
     let nextRow;
     const table = getTable();
-    const row = getRow(table);
+    const rows = getRows();
+
+    let row;
+    if (rows?.length === 1) {
+      row = getRow(table, 0);
+    } else {
+      row = getRow(table, rowIndex);
+    }
     nextRow = getNextRow(table);
 
     if (!nextRow || !row) {
@@ -227,17 +242,12 @@ function App() {
     }
 
     let t = nextRow.getElementsByTagName("td")[1].innerHTML;
-    let aus = nextRow.getElementsByTagName("td")[1].innerHTML;
     const cell = row.getElementsByTagName("td")[runde];
     setNep(t);
 
     if (!currentWeight) {
       alert("Es wurde kein Gewicht gesetzt!");
     } else {
-      if (aus.includes("Ausgeschieden")) {
-        console.log(true);
-      }
-
       nextRow.style.fontWeight = "bold";
       row.style.fontWeight = "normal";
       if (cell) {
@@ -255,24 +265,30 @@ function App() {
           cell.innerText = currentWeight;
           cell.style.backgroundColor = "lightcoral";
           setCircles(2, "");
+          setIsAusgVisible(true);
 
           let out = row.getElementsByTagName("td")[1].innerHTML;
+          addAusgeschiedenenRow(out);
 
-          if (!out.includes("Ausgeschieden")) {
-            //Wenn die Person noch im Renne ist, dann setzte sie zu ausgeschieden
-            setLetzterAusgeschiedener(out);
-            ausgeschiedene.push(out);
-            row.getElementsByTagName("td")[1].innerHTML =
-              out + " (Ausgeschieden)";
-            markAusgeschiedeneRow();
+          if (rows) {
+            for (let index = 0; index < rows.length; index++) {
+              const element = rows[index];
+              const e = element.getElementsByTagName("td");
+              const r = row.getElementsByTagName("td")[0].innerHTML;
+
+              if (e[0].innerHTML === r) {
+                if (index >= rows.length) {
+                  removeRow(1);
+                  setRow(0);
+                } else {
+                  removeRow(index + 1);
+                }
+              }
+            }
           }
+          return;
         }
       }
-
-      let nr = getRealNextRow(nextRow);
-      let foo = nr?.getElementsByTagName("td")[1].innerHTML;
-
-      console.log("Aktuell: " + t + " Nächster: " + foo);
 
       if (rowIndex > items.length - 2) {
         setRunde(runde + 1);
@@ -280,37 +296,15 @@ function App() {
       } else {
         setRow(rowIndex + 1);
       }
-      //getNextPerson(t);
     }
   };
 
-  const markAusgeschiedeneRow = () => {
-    let rows = getRows();
-
-    if (!rows) {
-      return null;
-    }
-
-    for (let index = 0; index < rows.length; index++) {
-      //gehe alle Reihen durch und gebe mir die Namen der Teilnehmer
-      const element = rows[index];
-      const teilnehmer = element.getElementsByTagName("td")[1].innerHTML;
-
-      for (let jindex = 0; jindex < ausgeschiedene.length; jindex++) {
-        //gehe alle Ausgeschiedenen durch
-        const ausgeschiedener = ausgeschiedene[jindex];
-
-        if (ausgeschiedener + " (Ausgeschieden)" === teilnehmer) {
-          //console.log(ausgeschiedener);
-          const reihe = element.getElementsByTagName("td");
-
-          for (let kindex = 0; kindex < reihe.length; kindex++) {
-            //färbe alle Zellen auf Grau um
-            const zelle = reihe[kindex];
-            zelle.style.backgroundColor = "lightgray";
-          }
-        }
-      }
+  const removeRow = (id: number) => {
+    const rows = getRows();
+    if (rows) {
+      console.log("ID: " + id);
+      rows[id - 1].remove();
+      setItems(items.filter((it: any) => it.id !== id));
     }
   };
 
@@ -377,6 +371,22 @@ function App() {
     </table>
   );
 
+  /*const [itemsAusgeschieden, setItemsAusgeschieden] = useState([
+    {
+      id: 1,
+      name: "Test",
+    },
+  ]);*/
+  const [itemsAusg, setItemsAusg] = useState<{ id: number; name: string }[]>(
+    []
+  );
+
+  const addAusgeschiedenenRow = (naim: string) => {
+    if (!itemsAusg) return;
+    const newId = itemsAusg.length + 1;
+    itemsAusg.push({ id: newId, name: naim });
+  };
+
   const tableRealData = (
     <table className="table table-hover tbl w-100">
       <thead className="table-dark">
@@ -396,13 +406,7 @@ function App() {
       </thead>
       <tbody>
         {csvData.map((row: any) => (
-          <tr
-            key={row.id}
-            id={row.id.toString()}
-            //onClick={() => handleRowClick(row.id)}
-            //className={selectedRow === row.id ? "table-secondary" : ""}
-            style={{ cursor: "pointer" }}
-          >
+          <tr key={row.id} id={row.id.toString()} style={{ cursor: "pointer" }}>
             <td onClick={handleCellClick}>{row.id}</td>
             <td onClick={handleCellClick}>{row.name}</td>
             <td onClick={handleCellClick}></td>
@@ -420,33 +424,45 @@ function App() {
     </table>
   );
 
-  const [cookiee, cock] = useState("Test");
-
-  //Setzen eines Cookies
-  const setCookie = (name: string, value: string, days: number) => {
-    const date = new Date();
-    date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000); // Expiration in days
-    document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
-  };
-
-  setCookie("Test", "Merlin", 180);
-
-  //Laden eines Cookies
-  const getCookie = (name: string) => {
-    const cookies = document.cookie.split("; ");
-    for (const c of cookies) {
-      const [cookieName, cookieValue] = c.split("=");
-      if (cookieName === name) {
-        cock(cookieValue);
-        console.log(cookieValue);
-
-        return cookieValue;
-      }
-    }
-    return null;
-  };
+  const tb = (
+    <table className="table table-hover w-100">
+      <thead className="table-dark">
+        <tr>
+          <th scope="col">Nummer</th>
+          <th scope="col">Name</th>
+          <th>Versuch 1</th>
+          <th>Versuch 2</th>
+          <th>Versuch 3</th>
+          <th>Versuch 4</th>
+          <th>Versuch 5</th>
+          <th>Versuch 6</th>
+          <th>Versuch 7</th>
+          <th>Versuch 8</th>
+          <th>Versuch 9</th>
+        </tr>
+      </thead>
+      <tbody>
+        {itemsAusg.map((row: any) => (
+          <tr key={row.id} id={row.id.toString()} style={{ cursor: "pointer" }}>
+            <td>{row.id}</td>
+            <td>{row.name}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   const [nextAthlete, setNextAthlete] = useState(false);
+  const [isAusgVisible, setIsAusgVisible] = useState(false);
 
   return (
     <>
@@ -491,8 +507,9 @@ function App() {
       {!isVisible && (
         <div>
           <div className="bg-primary p-2 d-flex">
-            <h1 className="athleteInfo p-2 bg-primary">
-              Athlet: {nextPerson} | Gewicht: {gewicht}kg | Best PR: {pr}kg
+            <h1 className="athleteInfo p-2">
+              Gewicht: {currentWeight}kg | Runde: {runde - 1} | {nextPerson} |
+              Best PR: {pr}kg
             </h1>
             <div className="d-flex justify-content-center gap-2 ms-4 align-items-center">
               <div className="circle bg-primary"></div>
@@ -502,10 +519,10 @@ function App() {
           </div>
           <div className="p-4">
             <div>
-              <h2>
-                Aktuelles Gewicht: {currentWeight}kg | Runde: {runde - 1}
-              </h2>
+              <h3>Aktuelle Athleten</h3>
               {tblRendered}
+              <h3>Ausgeschiedene Athleten</h3>
+              {tb}
             </div>
 
             <div className="row">
