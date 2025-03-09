@@ -1,6 +1,6 @@
 import NavBar from "./components/NavBar";
 import "./App.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parse } from "papaparse";
 
 function App() {
@@ -20,46 +20,63 @@ function App() {
   const [selectedCell, setSelectedCell] = useState<HTMLTableRowElement | null>(
     null
   );
-  const [lastSelectedCell, setLastSelectedCell] =
-    useState<HTMLTableRowElement | null>(null);
   const [runde, setRunde] = useState(2);
   const [rowIndex, setRow] = useState(0);
   const [nextPerson, setNextPerson] = useState("");
   const [gewicht, setGewicht] = useState("");
   const [pr, setPr] = useState(null);
-  const [lastSelectedCellBgColor, setLastSelectedCellBgColor] = useState("");
   const [fileName, setFileName] = useState("");
   const [csvData, setCsvData] = useState<any>([]);
   const [isVisible, setIsVisible] = useState(true);
+  const [tblRendered, setTblRendered] = useState<any>();
+  const [ausgeschiedene, setAusgeschiedene] = useState<string[]>([]);
+  const [letzterAusgeschiedener, setLetzterAusgeschiedener] = useState("");
+
+  let lastSelectedCell: HTMLElement;
+  let lastSelectedCellBgColor: string;
 
   const resetValues = () => {
     setInputValue("");
     setCellInputValue("");
     setCurrentWeight("0");
     setSelectedCell(null);
-    setLastSelectedCell(null);
     setRunde(2);
     setRow(0);
     setNextPerson(items[0].name);
     setGewicht(items[0].gew);
     setPr(items[0].pr);
-    setLastSelectedCellBgColor("");
   };
 
   const handleChange = (event: any) => {
     setInputValue(event.target.value);
-    console.log(event.target);
+  };
+
+  //Wenn das Gewicht, oder die Zelle geändert werden und man auf ENTER drückt
+  const handleKeyDown = (event: any) => {
+    if (event.key === "Enter") {
+      if (event.target.id === "inputZelleBearbeiten") {
+        event.preventDefault();
+        handleSetCell();
+        event.target.value = "";
+      }
+      if (event.target.id === "inputSetzeGewicht") {
+        event.preventDefault();
+        setInputValue(event.target.value);
+        handleSetWeight();
+      }
+    }
   };
 
   const handleCellChange = (event: any) => {
     setCellInputValue(event.target.value);
-    console.log(event.target);
   };
 
   const handleSetWeight = () => {
     setCurrentWeight(inputValue);
+    setInputValue("");
   };
 
+  //Setze die Zelle auf die vorherige Farbe und ändere ihren Wert auf den angegebenen
   const handleSetCell = () => {
     if (selectedCell) {
       selectedCell.style.backgroundColor = lastSelectedCellBgColor;
@@ -67,21 +84,27 @@ function App() {
     }
   };
 
+  //Wenn eine Zelle angeklickt wird, dann setze letzte Zelle und ändere ihren Hintergrund
   const handleCellClick = (event: any) => {
-    console.log("last");
+    //Wenn Zelle geklickt wird, kommt von Button Action
+    const tableData = event.target as HTMLElement;
+    console.log("SelectedCell");
+    console.log(tableData);
+    console.log("lastSelectedCell");
     console.log(lastSelectedCell);
+
     if (lastSelectedCell) {
       lastSelectedCell.style.backgroundColor = lastSelectedCellBgColor;
     }
-    setSelectedCell(event.target); // Speichert die angeklickte Zelle
-    console.log("color");
-    //console.log(selectedCell);
-    setLastSelectedCellBgColor(event.target.style.backgroundColor);
-    console.log(lastSelectedCellBgColor);
 
-    //selectedCell;
-    event.target.style.backgroundColor = "lightgrey";
-    setLastSelectedCell(event.target);
+    setSelectedCell(event.target); // Speichert die angeklickte Zelle
+
+    lastSelectedCell = tableData;
+    lastSelectedCellBgColor = tableData.style.backgroundColor;
+
+    console.log("BackgroundColor: " + lastSelectedCellBgColor);
+
+    tableData.style.backgroundColor = "lightgrey"; //setze aktuell geklickte Zelle auf Grau
   };
 
   const getNextRow = (table: Element | null): HTMLTableRowElement | null => {
@@ -103,6 +126,30 @@ function App() {
     return nextRow;
   };
 
+  const getRealNextRow = (row: HTMLTableRowElement) => {
+    let nextRow;
+    let t = getTable();
+
+    if (!row || !t) {
+      return null;
+    }
+
+    let elem = t.getElementsByTagName("tr");
+
+    for (let index = 0; index < elem.length; index++) {
+      const element = elem[index];
+      if (row === element) {
+        if (index + 1 > elem.length - 1) {
+          nextRow = elem[0];
+        } else {
+          nextRow = elem[index + 1];
+        }
+      }
+    }
+
+    return nextRow;
+  };
+
   const getTable = (): Element | null => {
     const table = document.querySelector("table tbody");
     if (!table) {
@@ -111,6 +158,12 @@ function App() {
     } else {
       return table;
     }
+  };
+
+  const getRows = () => {
+    let table = getTable();
+    let row = table?.getElementsByTagName("tr");
+    return row;
   };
 
   const getRow = (table: Element | null): HTMLTableRowElement | null => {
@@ -138,7 +191,32 @@ function App() {
     });
   };
 
-  const onBewertung = async (value: number) => {
+  const setCircles = (value: number, np: string) => {
+    const circles = document.getElementsByClassName("circle");
+
+    if (np) {
+      getNextPerson(np);
+    }
+
+    for (let index = 0; index < circles.length; index++) {
+      const circle = circles[index];
+
+      if (value === 0) {
+        circle.className = "circle bg-primary";
+      }
+      if (value === 1) {
+        circle.className = "circle bg-light";
+      }
+      if (value === 2) {
+        circle.className = "circle bg-danger";
+      }
+    }
+  };
+
+  const [nep, setNep] = useState<any>();
+
+  //Beim Klick auf Bewertung
+  const onBewertung = (value: number) => {
     let nextRow;
     const table = getTable();
     const row = getRow(table);
@@ -148,56 +226,113 @@ function App() {
       return null;
     }
 
-    let t = nextRow.getElementsByTagName("td")[1].innerHTML.toString();
+    let t = nextRow.getElementsByTagName("td")[1].innerHTML;
+    let aus = nextRow.getElementsByTagName("td")[1].innerHTML;
     const cell = row.getElementsByTagName("td")[runde];
+    setNep(t);
 
     if (!currentWeight) {
       alert("Es wurde kein Gewicht gesetzt!");
     } else {
+      if (aus.includes("Ausgeschieden")) {
+        console.log(true);
+      }
+
       nextRow.style.fontWeight = "bold";
       row.style.fontWeight = "normal";
       if (cell) {
         if (value === 1) {
           cell.innerText = currentWeight;
           cell.style.backgroundColor = "lightgreen";
+          setCircles(1, "");
         }
         if (value === 0) {
           cell.innerText = "Skipped";
           cell.style.backgroundColor = "lightyellow";
+          setCircles(3, "");
         }
         if (value === 2) {
           cell.innerText = currentWeight;
           cell.style.backgroundColor = "lightcoral";
+          setCircles(2, "");
+
+          let out = row.getElementsByTagName("td")[1].innerHTML;
+
+          if (!out.includes("Ausgeschieden")) {
+            //Wenn die Person noch im Renne ist, dann setzte sie zu ausgeschieden
+            setLetzterAusgeschiedener(out);
+            ausgeschiedene.push(out);
+            row.getElementsByTagName("td")[1].innerHTML =
+              out + " (Ausgeschieden)";
+            markAusgeschiedeneRow();
+          }
         }
       }
+
+      let nr = getRealNextRow(nextRow);
+      let foo = nr?.getElementsByTagName("td")[1].innerHTML;
+
+      console.log("Aktuell: " + t + " Nächster: " + foo);
+
       if (rowIndex > items.length - 2) {
         setRunde(runde + 1);
         setRow(0);
       } else {
         setRow(rowIndex + 1);
       }
-      getNextPerson(t);
+      //getNextPerson(t);
+    }
+  };
+
+  const markAusgeschiedeneRow = () => {
+    let rows = getRows();
+
+    if (!rows) {
+      return null;
+    }
+
+    for (let index = 0; index < rows.length; index++) {
+      //gehe alle Reihen durch und gebe mir die Namen der Teilnehmer
+      const element = rows[index];
+      const teilnehmer = element.getElementsByTagName("td")[1].innerHTML;
+
+      for (let jindex = 0; jindex < ausgeschiedene.length; jindex++) {
+        //gehe alle Ausgeschiedenen durch
+        const ausgeschiedener = ausgeschiedene[jindex];
+
+        if (ausgeschiedener + " (Ausgeschieden)" === teilnehmer) {
+          //console.log(ausgeschiedener);
+          const reihe = element.getElementsByTagName("td");
+
+          for (let kindex = 0; kindex < reihe.length; kindex++) {
+            //färbe alle Zellen auf Grau um
+            const zelle = reihe[kindex];
+            zelle.style.backgroundColor = "lightgray";
+          }
+        }
+      }
     }
   };
 
   const handleRenderDataClick = (e: any) => {
-    setIsVisible(false);
     const btn = e.target.innerHTML;
 
     if (btn === "Upload" && fileName) {
       setTblRendered(tableRealData);
       setItems(csvData);
       resetValues();
+      setIsVisible(false);
     } else if (btn === "DummyData") {
       setTblRendered(tableDummyData);
       setItems(dummy);
       resetValues();
+      setIsVisible(false);
+    } else if (btn === "ResetData") {
+      setIsVisible(true);
     } else {
       alert("Es wurde keine Datei ausgewählt!");
     }
   };
-
-  const [tblRendered, setTblRendered] = useState<any>();
 
   const tableDummyData = (
     <table className="table table-hover tbl w-100">
@@ -285,6 +420,34 @@ function App() {
     </table>
   );
 
+  const [cookiee, cock] = useState("Test");
+
+  //Setzen eines Cookies
+  const setCookie = (name: string, value: string, days: number) => {
+    const date = new Date();
+    date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000); // Expiration in days
+    document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
+  };
+
+  setCookie("Test", "Merlin", 180);
+
+  //Laden eines Cookies
+  const getCookie = (name: string) => {
+    const cookies = document.cookie.split("; ");
+    for (const c of cookies) {
+      const [cookieName, cookieValue] = c.split("=");
+      if (cookieName === name) {
+        cock(cookieValue);
+        console.log(cookieValue);
+
+        return cookieValue;
+      }
+    }
+    return null;
+  };
+
+  const [nextAthlete, setNextAthlete] = useState(false);
+
   return (
     <>
       <div className="p-2">
@@ -325,84 +488,124 @@ function App() {
         </div>
       )}
 
-      <div>
-        <h1 className="p-2 bg-primary">
-          Athlet: {nextPerson} | Gewicht: {gewicht}kg | Best PR: {pr}kg
-        </h1>
-      </div>
-
-      <div className="p-4">
+      {!isVisible && (
         <div>
-          <h2>
-            Aktuelles Gewicht: {currentWeight}kg | Runde: {runde - 1}
-          </h2>
-          {tblRendered}
-        </div>
+          <div className="bg-primary p-2 d-flex">
+            <h1 className="athleteInfo p-2 bg-primary">
+              Athlet: {nextPerson} | Gewicht: {gewicht}kg | Best PR: {pr}kg
+            </h1>
+            <div className="d-flex justify-content-center gap-2 ms-4 align-items-center">
+              <div className="circle bg-primary"></div>
+              <div className="circle bg-primary"></div>
+              <div className="circle bg-primary"></div>
+            </div>
+          </div>
+          <div className="p-4">
+            <div>
+              <h2>
+                Aktuelles Gewicht: {currentWeight}kg | Runde: {runde - 1}
+              </h2>
+              {tblRendered}
+            </div>
 
-        <div className="row">
-          <div className="col text-left">
-            <div className="">
-              <button
-                type="submit"
-                className="btn btn-primary w-25 m-2"
-                onClick={handleSetWeight}
-              >
-                Setze Gewicht
-              </button>
-              <input
-                className="w-25"
-                value={inputValue}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="">
-              <button
-                type="submit"
-                className="btn btn-primary w-25 m-2"
-                onClick={handleSetCell}
-              >
-                Zelle bearbeiten
-              </button>
-              <input
-                className="w-25"
-                value={cellInputValue}
-                onChange={handleCellChange}
-              />
-            </div>
-          </div>
-          <div className="col text-end">
-            <div
-              className="btn-group btn-group-lg btn-align d-flex"
-              role="group"
-            >
-              <button
-                className="btn btn-danger"
-                onClick={() => {
-                  onBewertung(2);
-                }}
-              >
-                Ungültig
-              </button>
-              <button
-                className="btn btn-warning"
-                onClick={() => {
-                  onBewertung(0);
-                }}
-              >
-                Übersprungen
-              </button>
-              <button
-                className="btn btn-success"
-                onClick={() => {
-                  onBewertung(1);
-                }}
-              >
-                Gültig
-              </button>
+            <div className="row">
+              <div className="col text-left">
+                <div className="">
+                  <button
+                    type="submit"
+                    className="btn btn-primary w-25 m-2"
+                    onClick={handleSetWeight}
+                  >
+                    Setze Gewicht
+                  </button>
+                  <input
+                    className="w-25"
+                    id="inputSetzeGewicht"
+                    value={inputValue}
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+                <div className="">
+                  <button
+                    type="submit"
+                    className="btn btn-primary w-25 m-2"
+                    onClick={handleSetCell}
+                  >
+                    Zelle bearbeiten
+                  </button>
+                  <input
+                    className="w-25"
+                    id="inputZelleBearbeiten"
+                    value={cellInputValue}
+                    onChange={handleCellChange}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+                <div className="">
+                  <button
+                    type="submit"
+                    className="btn btn-primary w-25 m-2"
+                    onClick={handleRenderDataClick}
+                  >
+                    ResetData
+                  </button>
+                </div>
+              </div>
+              <div className="col text-end">
+                {!nextAthlete && (
+                  <div
+                    className="btn-group btn-group-lg btn-align d-flex"
+                    role="group"
+                  >
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => {
+                        onBewertung(2);
+                        setNextAthlete(true);
+                      }}
+                    >
+                      Ungültig
+                    </button>
+                    <button
+                      className="btn btn-warning"
+                      onClick={() => {
+                        onBewertung(0);
+                        setNextAthlete(true);
+                      }}
+                    >
+                      Übersprungen
+                    </button>
+                    <button
+                      className="btn btn-success"
+                      onClick={() => {
+                        onBewertung(1);
+                        setNextAthlete(true);
+                      }}
+                    >
+                      Gültig
+                    </button>
+                  </div>
+                )}
+
+                {nextAthlete && (
+                  <div>
+                    <button
+                      className="btn btn-primary w-100 p-2"
+                      onClick={() => {
+                        setNextAthlete(false);
+                        setCircles(0, nep);
+                      }}
+                    >
+                      Nächster Athlet
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
